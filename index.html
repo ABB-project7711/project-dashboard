@@ -264,6 +264,11 @@
 .evt-chip.custom:hover { outline:1.5px solid #d97706; }
   .tt-row-past td { background: #e5e7eb !important; color: #9ca3af; }
   .tt-row-past td span { color: #9ca3af !important; }
+  .tt-toolbar { display:flex; align-items:center; justify-content:space-between; gap:14px; margin:0 0 12px; padding:10px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; }
+  .tt-hide-past { display:inline-flex; align-items:center; gap:9px; color:#334155; font-size:14px; font-weight:750; cursor:pointer; user-select:none; }
+  .tt-hide-past input { width:18px; height:18px; margin:0; accent-color:#0369a1; cursor:pointer; }
+  .tt-past-count { display:inline-flex; align-items:center; justify-content:center; min-width:22px; height:22px; padding:0 7px; border-radius:999px; background:#e2e8f0; color:#64748b; font-size:12px; font-weight:800; }
+  .tt-result-count { color:#64748b; font-size:13px; font-weight:700; white-space:nowrap; }
   .tt-stest-badge { display:inline-block; background:#e0f2fe; color:#0369a1; font-weight:800; font-size:11px; border-radius:5px; padding:1px 8px; }
   .tt-row-click { cursor:pointer; }
   .tt-row-click:hover td { background:#eef2ff !important; }
@@ -4088,7 +4093,7 @@ const HELP_TEXTS = {
   delivery: ["FAT / DELIVERY / GR / IR","Delivery checklist by vessel. Select FAT, Site Required, ETA, Delivery, and GR dates from the calendar. The vessel header includes String Test status, date, PO/SO numbers, and the Invoice Request email button. D-n/OVER badges highlight upcoming and overdue items."],
   billing: ["BILLING & PAYMENT","Billing uses vessels and items from Delivery. Enter <b>Price</b> to calculate <b>DP</b> and retention automatically. Entering a payment date marks the row complete. GR status is synchronized from Delivery."],
   totalDelivery: ["Total Delivery","View delivery items across all projects in one table. Filter by <b>Yard</b>, click headers to sort dates, and use the right-side controls to hide completed items or show ETA. Comments save as you type. Items named DP are excluded."],
-  totalTest: ["Total Test","View all items with a <b>FAT date</b> plus completed <b>String Tests</b>. Click the FAT Date header to switch sort direction; past dates appear muted."],
+  totalTest: ["Test","View all items with a <b>FAT date</b> plus completed <b>String Tests</b>. Click the FAT Date header to switch sort direction. Past dates appear muted, or select <b>Hide past FAT dates</b> to remove them from the current view."],
   totalIssues: ["Issue Register","Manage every project issue in one spreadsheet-style register. Filter by project or status, search any field, and edit cells directly. New fields are saved inside the existing project issue data, so older JSON files remain compatible."],
   totalTimeline: ["Project Execution Status","See execution stages across all projects, summarized by progress, risk, and stage status."],
   projFinancial: ["Project Financial Status","Track payment progress by shipyard, project, and vessel. DP, Delivery, FNBL, and Retention each count for 25%, while All Payment Done sets 100%."],
@@ -6458,6 +6463,7 @@ function renderEventCalendar(){
 
 /* ── TOTAL TEST (all projects' FAT items with a FAT date) ── */
 let ttestSortDir = 1; // 1 asc, -1 desc (by FAT date)
+let ttestHidePast = false;
 function gatherFatRows(){
   const rows = [];
   projects.forEach(proj=>{
@@ -6497,6 +6503,7 @@ function gatherFatRows(){
   return rows;
 }
 function ttestSort(){ ttestSortDir = -ttestSortDir; renderTotalTest(); }
+function ttestToggleHidePast(checked){ ttestHidePast = !!checked; renderTotalTest(); }
 function openTotalTest(){ ttestSortDir = 1; renderTotalTest(); openPortfolioWorkspace("total-test-overlay", "test"); }
 function closeTotalTest(){ closePortfolioWorkspace("total-test-overlay"); }
 function tdGoto(projId, gi){
@@ -6553,8 +6560,8 @@ function renderTotalTest(){
   syncAllRisks();
   const wrap = document.getElementById("tt-test-content");
   if(!wrap) return;
-  const rows = gatherFatRows();
-  rows.sort((a,b)=>{
+  const allRows = gatherFatRows();
+  allRows.sort((a,b)=>{
     const da=parseTdDate(a.fatDate), db=parseTdDate(b.fatDate);
     if(!da && !db) return 0; if(!da) return 1; if(!db) return -1;
     return ttestSortDir*(da-db);
@@ -6562,6 +6569,9 @@ function renderTotalTest(){
   const arrow = ttestSortDir===1 ? "▲" : "▼";
   const ox = v => v==="O" ? "<span style='color:#059669;font-weight:800;'>O</span>" : "<span style='color:#cbd5e1;font-weight:800;'>–</span>";
   const today = new Date(); today.setHours(0,0,0,0);
+  const isPastFat = r => { const d=parseTdDate(r.fatDate); return !!(d && d < today); };
+  const pastCount = allRows.reduce((sum,r)=>sum+(isPastFat(r)?1:0),0);
+  const rows = ttestHidePast ? allRows.filter(r=>!isPastFat(r)) : allRows;
   const body = rows.length ? rows.map(r=>{
     const fd = parseTdDate(r.fatDate);
     const past = fd && fd < today;   // FAT already held → grey out
@@ -6579,8 +6589,16 @@ function renderTotalTest(){
     <td><div class="pf-cellpad" style="font-weight:700;">${esc(r.fatDate)||"—"}</div></td>
     <td><div class="pf-cellpad">${esc(r.siteRequiredDate)||"—"}</div></td>
   </tr>`;
-  }).join("") : `<tr><td colspan="7" style="text-align:center;color:#9ca3af;padding:22px;">No items have a FAT date.</td></tr>`;
-  wrap.innerHTML = `<table class="pf-tbl">
+  }).join("") : `<tr><td colspan="7" style="text-align:center;color:#9ca3af;padding:22px;">${ttestHidePast && allRows.length ? "All past FAT dates are hidden." : "No items have a FAT date."}</td></tr>`;
+  wrap.innerHTML = `<div class="tt-toolbar">
+    <label class="tt-hide-past" for="tt-hide-past">
+      <input id="tt-hide-past" type="checkbox" ${ttestHidePast?"checked":""} onchange="ttestToggleHidePast(this.checked)">
+      <span>Hide past FAT dates</span>
+      <span class="tt-past-count" title="Past FAT dates">${pastCount}</span>
+    </label>
+    <span class="tt-result-count">Showing ${rows.length} of ${allRows.length}</span>
+  </div>
+  <table class="pf-tbl">
     <thead><tr>
       <th class="pf-left">Shipyard</th><th class="pf-left">Project</th><th class="pf-left">Vessel</th><th class="pf-left">Item</th>
       <th>Invitation</th>
