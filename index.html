@@ -5537,7 +5537,7 @@ function renderTotalDelivery(){
           }
           const etaCell = tdShowEta ? `<td style="white-space:nowrap;">${esc(r.etaPort)||"—"}</td>` : "";
           return `<tr class="td-row-click" role="button" tabindex="0" onclick="tdGoto('${r.projId}',${r.gi})"
-            onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();tdGoto('${r.projId}',${r.gi})}" title="Click to open this vessel in the Delivery card">
+            onkeydown="tdHandleRowKey(event,'${r.projId}',${r.gi})" title="Click to open this vessel in the Delivery card">
             ${warnCell}
             <td style="font-size:12px;color:#6b7280;white-space:nowrap;">
               <span class="sb-dot" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${shipyardColor(r.shipyard)};margin-right:5px;vertical-align:middle;" title="${esc(r.shipyard)||"Not set"}"></span>${esc(r.project)}
@@ -5561,6 +5561,16 @@ function renderTotalDelivery(){
       </table>`;
 
   document.getElementById("td-table-wrap").innerHTML = html;
+}
+
+function tdHandleRowKey(event, projId, gi){
+  // Inputs and buttons inside the row own their keyboard events. Only activate
+  // row navigation when the row itself has focus.
+  if(event.target !== event.currentTarget) return;
+  if(event.key==="Enter" || event.key===" "){
+    event.preventDefault();
+    tdGoto(projId, gi);
+  }
 }
 
 function tdToggleEta(show){
