@@ -2188,7 +2188,7 @@ table.npr-tbl td.dim{color:#d1d5db;}
 <div id="total-delivery-overlay" class="td-overlay" onclick="closeTotalDelivery()">
   <div class="td-panel" style="max-width:1840px;" onclick="event.stopPropagation()">
     <div class="td-hdr">
-      <span>Delivery<span class="view-scope">All Projects</span><span class="help-q light" title="How to use" onclick="toggleHelp('totalDelivery',event)">?</span></span>
+      <span>Delivery<span id="td-view-scope" class="view-scope">All Projects</span><span class="help-q light" title="How to use" onclick="toggleHelp('totalDelivery',event)">?</span></span>
       <span style="display:flex;align-items:center;gap:10px;">
         <button onclick="openDeliveryCost()" title="Manage delivery costs" style="background:#059669;color:#fff;border:none;border-radius:8px;padding:6px 16px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;">💲 COST</button>
         <button class="modal-close" aria-label="Close Delivery" onclick="closeTotalDelivery()">✕</button>
@@ -2196,13 +2196,25 @@ table.npr-tbl td.dim{color:#d1d5db;}
     </div>
     <div class="td-body">
       <div class="portfolio-toolbar" style="margin-bottom:10px;display:flex;align-items:center;gap:16px;">
-        <label style="font-size:12px;font-weight:700;color:#475569;display:flex;align-items:center;gap:6px;">
-          Yard:
-          <select id="td-yard-filter" class="ei" style="font-size:12px;padding:4px 8px;min-width:130px;" onchange="tdSetYard(this.value)">
-            <option value="">All</option>
-          </select>
-        </label>
-        <span style="flex:1;"></span>
+         <label style="font-size:12px;font-weight:700;color:#475569;display:flex;align-items:center;gap:6px;">
+           Yard:
+           <select id="td-yard-filter" class="ei" style="font-size:12px;padding:4px 8px;min-width:130px;" onchange="tdSetYard(this.value)">
+             <option value="">All</option>
+           </select>
+         </label>
+         <label style="font-size:12px;font-weight:700;color:#475569;display:flex;align-items:center;gap:6px;">
+           Project:
+           <select id="td-project-filter" class="ei" style="font-size:12px;padding:4px 8px;min-width:210px;" onchange="tdSetProject(this.value)">
+             <option value="">All Projects</option>
+           </select>
+         </label>
+         <label style="font-size:12px;font-weight:700;color:#475569;display:flex;align-items:center;gap:6px;">
+           Vessel:
+           <select id="td-vessel-filter" class="ei" style="font-size:12px;padding:4px 8px;min-width:150px;" onchange="tdSetVessel(this.value)">
+             <option value="">All Vessels</option>
+           </select>
+         </label>
+         <span style="flex:1;"></span>
         <label style="font-size:12px;font-weight:600;color:#475569;cursor:pointer;display:flex;align-items:center;gap:5px;">
           <input type="checkbox" id="td-hide-toggle" checked onchange="tdToggleHide(this.checked)"> Hide completed deliveries
         </label>
@@ -4092,7 +4104,7 @@ const HELP_TEXTS = {
   financial: ["FINANCIAL ASPECT","Manage contract values by vessel series, including <b>Original/Current contract value</b>, <b>VO history</b>, and <b>Payment Terms</b>. Currency and DP percentage flow automatically into Billing."],
   delivery: ["FAT / DELIVERY / GR / IR","Delivery checklist by vessel. Select FAT, Site Required, ETA, Delivery, and GR dates from the calendar. The vessel header includes String Test status, date, PO/SO numbers, and the Invoice Request email button. D-n/OVER badges highlight upcoming and overdue items."],
   billing: ["BILLING & PAYMENT","Billing uses vessels and items from Delivery. Enter <b>Price</b> to calculate <b>DP</b> and retention automatically. Entering a payment date marks the row complete. GR status is synchronized from Delivery."],
-  totalDelivery: ["Total Delivery","View delivery items across all projects in one table. Filter by <b>Yard</b>, click headers to sort dates, and use the right-side controls to hide completed items or show ETA. Comments save as you type. Items named DP are excluded."],
+  totalDelivery: ["Total Delivery","View delivery items across all projects in one table. Filter by <b>Yard</b>, <b>Project</b>, or <b>Vessel</b>. Selecting a project automatically narrows the vessel list. Click date headers to sort, and use the right-side controls to hide completed items or show ETA. Comments save as you type. Items named DP are excluded."],
   totalTest: ["Test","View all items with a <b>FAT date</b> plus completed <b>String Tests</b>. Click the FAT Date header to switch sort direction. Past dates appear muted, or select <b>Hide past FAT dates</b> to remove them from the current view."],
   totalIssues: ["Issue Register","Manage every project issue in one spreadsheet-style register. Filter by project or status, search any field, and edit cells directly. New fields are saved inside the existing project issue data, so older JSON files remain compatible."],
   totalTimeline: ["Project Execution Status","See execution stages across all projects, summarized by progress, risk, and stage status."],
@@ -5313,6 +5325,8 @@ let tdSortKey = "site"; // "delivery" | "site" | "eta"
 let tdShowEta = true; // ETA PORT column visibility
 let tdHideDelivered = true; // hide delivered (delivery=O) rows
 let tdYardFilter = ""; // "" = all yards
+let tdProjectFilter = ""; // project id; "" = all projects
+let tdVesselFilter = ""; // vessel name; "" = all vessels
 let tdOnlyGrX = false; // GR 미완료(X)만 표시
 
 const ORIGIN_THRESHOLDS_TD = {CN:14, EU:90, KR:7};
@@ -5487,6 +5501,8 @@ function renderDeliveryCost(){
 function renderTotalDelivery(){
   let rows = gatherDeliveryRows();
   if(tdYardFilter) rows = rows.filter(r=>(r.shipyard||"Not set")===tdYardFilter);  // yard filter
+  if(tdProjectFilter) rows = rows.filter(r=>r.projId===tdProjectFilter);  // project filter
+  if(tdVesselFilter) rows = rows.filter(r=>r.vessel===tdVesselFilter);  // vessel filter
   if(tdHideDelivered) rows = rows.filter(r=>!r.delivered);  // hide delivered items
   if(tdOnlyGrX) rows = rows.filter(r=>r.gr!=="O");  // GR 미완료(X)만
   const sortFieldMap = {site:"siteRequiredDate", eta:"etaPort", delivery:"deliveryDate"};
@@ -5504,7 +5520,7 @@ function renderTotalDelivery(){
   const delArrow  = tdSortKey==="delivery" ? " "+arr : "";
   const etaHead = tdShowEta ? `<th class="sortable" onclick="tdSort('eta')" title="Sort">ETA Port${etaArrow}</th>` : "";
   const html = rows.length===0
-    ? `<div style="padding:20px;text-align:center;color:#9ca3af;">No data available.</div>`
+    ? `<div style="padding:20px;text-align:center;color:#9ca3af;">No deliveries match the selected filters.</div>`
     : `<table class="td-tbl">
         <thead><tr>
           <th style="width:52px;"></th>
@@ -5620,7 +5636,45 @@ function saveTdShipping(projId, gi, ii, val){
   }
 }
 
+function tdRefreshDeliveryFilters(){
+  const allRows = gatherDeliveryRows();
+  const projectMap = new Map();
+  allRows.forEach(r=>projectMap.set(r.projId, r.project));
+  const availableProjects = [...projectMap.entries()].sort((a,b)=>String(a[1]).localeCompare(String(b[1]),undefined,{numeric:true,sensitivity:"base"}));
+  if(tdProjectFilter && !projectMap.has(tdProjectFilter)) tdProjectFilter = "";
+
+  const vesselRows = tdProjectFilter ? allRows.filter(r=>r.projId===tdProjectFilter) : allRows;
+  const availableVessels = [...new Set(vesselRows.map(r=>r.vessel).filter(v=>v && v!=="—"))]
+    .sort((a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:"base"}));
+  if(tdVesselFilter && !availableVessels.includes(tdVesselFilter)) tdVesselFilter = "";
+
+  const projectSelect = document.getElementById("td-project-filter");
+  if(projectSelect){
+    projectSelect.innerHTML = `<option value="">All Projects</option>` + availableProjects.map(([id,name])=>`<option value="${esc(id)}"${id===tdProjectFilter?" selected":""}>${esc(name)}</option>`).join("");
+  }
+  const vesselSelect = document.getElementById("td-vessel-filter");
+  if(vesselSelect){
+    vesselSelect.innerHTML = `<option value="">All Vessels</option>` + availableVessels.map(v=>`<option value="${esc(v)}"${v===tdVesselFilter?" selected":""}>${esc(v)}</option>`).join("");
+  }
+  const scope = document.getElementById("td-view-scope");
+  if(scope){
+    const projectName = tdProjectFilter ? (projectMap.get(tdProjectFilter)||"Selected Project") : "All Projects";
+    scope.textContent = tdVesselFilter ? `${projectName} · ${tdVesselFilter}` : projectName;
+  }
+}
+
 function tdSetYard(v){ tdYardFilter = v || ""; renderTotalDelivery(); }
+function tdSetProject(v){
+  tdProjectFilter = v || "";
+  tdVesselFilter = "";
+  tdRefreshDeliveryFilters();
+  renderTotalDelivery();
+}
+function tdSetVessel(v){
+  tdVesselFilter = v || "";
+  tdRefreshDeliveryFilters();
+  renderTotalDelivery();
+}
 
 function openTotalDelivery(){
   tdSortKey = "site"; tdSortDir = 1; // default: Site Required Date, ascending
@@ -5635,6 +5689,7 @@ function openTotalDelivery(){
     if(tdYardFilter && !yards.includes(tdYardFilter)) tdYardFilter = "";
     sel.innerHTML = `<option value="">All</option>` + yards.map(y=>`<option value="${esc(y)}"${y===tdYardFilter?" selected":""}>${esc(y)}</option>`).join("");
   }
+  tdRefreshDeliveryFilters();
   renderTotalDelivery();
   openPortfolioWorkspace("total-delivery-overlay", "delivery");
 }
