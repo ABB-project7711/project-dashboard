@@ -1439,13 +1439,12 @@ table.npr-tbl td.dim{color:#d1d5db;}
   #total-issues-overlay .td-panel { background: #f8fafc; }
   #total-issues-overlay .td-body { padding: 14px; }
   .ir-summary {
-    display: grid; grid-template-columns: repeat(4,minmax(120px,1fr)); gap: 8px; margin-bottom: 10px;
+    display: grid; grid-template-columns: repeat(3,minmax(120px,1fr)); gap: 8px; margin-bottom: 10px;
   }
   .ir-stat {
     min-width: 0; padding: 10px 12px; border: 1px solid #d7dde6; border-top: 3px solid #64748b;
     border-radius: 9px; background: #fff; box-shadow: 0 2px 8px rgba(15,23,42,.04);
   }
-  .ir-stat[data-tone="open"] { border-top-color: #d97706; }
   .ir-stat[data-tone="progress"] { border-top-color: #d20a16; }
   .ir-stat[data-tone="closed"] { border-top-color: #059669; }
   .ir-stat-val { font-size: 20px; line-height: 1; font-weight: 900; color: #17202d; }
@@ -1493,8 +1492,13 @@ table.npr-tbl td.dim{color:#d1d5db;}
     background: #fff; vertical-align: top;
   }
   .ir-row:nth-child(even) td { background: #fcfdff; }
-  .ir-row.is-closed td { background: #f0fdf4; }
-  .ir-row.is-open td.ir-status-cell { background: #fff7ed; }
+  .ir-row.is-closed td { background: #eceff3 !important; color: #7b8491; }
+  .ir-row.is-closed:hover td { background: #e3e7ec !important; }
+  .ir-row.is-closed .ir-cell-input,
+  .ir-row.is-closed .ir-cell-text,
+  .ir-row.is-closed .ir-cell-select,
+  .ir-row.is-closed .ir-readonly { color: #7b8491; }
+  .ir-row.is-closed .ir-photo-box { filter: grayscale(1); opacity: .72; }
   .ir-row.is-progress td.ir-status-cell { background: #fff1f2; }
   .ir-readonly {
     display: flex; height: 100%; min-height: 112px; align-items: center; justify-content: center;
@@ -2495,7 +2499,7 @@ function defaultStages(){
 }
 function defaultCats(){
   return [
-    {id:1,name:"New Category",priority:"Medium",status:"Open",openDate:"",owner:"",issues:[]},
+    {id:1,name:"New Category",priority:"Medium",status:"In Progress",openDate:"",owner:"",issues:[]},
   ];
 }
 function defaultSummary(){ return {criticals:[""],actions:[""],decisions:[],voHistory:[]}; }
@@ -2516,33 +2520,33 @@ function sampleProject(){
     ],
     cats:[
       {id:1,name:"Integration",priority:"High",status:"In Progress",due:"Jun 20",owner:"K. Park",issues:[
-        {id:"I-01",desc:"Interface spec not finalized between FPSO topsides and hull",priority:"High",status:"Open",due:"Jun 15"},
+        {id:"I-01",desc:"Interface spec not finalized between FPSO topsides and hull",priority:"High",status:"In Progress",due:"Jun 15"},
         {id:"I-02",desc:"Data exchange protocol mismatch with EPC partner",priority:"High",status:"In Progress",due:"Jun 20"},
         {id:"I-03",desc:"3D model clash detection — 12 unresolved clashes",priority:"Medium",status:"In Progress",due:"Jun 25"},
       ]},
-      {id:2,name:"Stakeholder",priority:"Medium",status:"Open",due:"Jun 30",owner:"J. Lee",issues:[
-        {id:"S-01",desc:"Client rep not available for weekly review",priority:"Medium",status:"Open",due:"Jun 30"},
+      {id:2,name:"Stakeholder",priority:"Medium",status:"In Progress",due:"Jun 30",owner:"J. Lee",issues:[
+        {id:"S-01",desc:"Client rep not available for weekly review",priority:"Medium",status:"In Progress",due:"Jun 30"},
       ]},
       {id:3,name:"Scope & Change",priority:"High",status:"In Progress",due:"Jun 15",owner:"M. Kim",issues:[
         {id:"SC-01",desc:"Scope change #12 — piping reroute, cost impact TBD",priority:"High",status:"In Progress",due:"Jun 14"},
-        {id:"SC-02",desc:"Client requested CE marking on electrical components",priority:"High",status:"Open",due:"Jun 20"},
-        {id:"SC-03",desc:"FAT test procedure revision required by DNV GL",priority:"High",status:"Open",due:"Jun 18"},
+        {id:"SC-02",desc:"Client requested CE marking on electrical components",priority:"High",status:"In Progress",due:"Jun 20"},
+        {id:"SC-03",desc:"FAT test procedure revision required by DNV GL",priority:"High",status:"In Progress",due:"Jun 18"},
         {id:"SC-04",desc:"Structural reinforcement due to load recalculation",priority:"Medium",status:"In Progress",due:"Jun 25"},
       ]},
       {id:4,name:"Schedule",priority:"High",status:"In Progress",due:"Jun 18",owner:"Y. Jung",issues:[
-        {id:"SCH-01",desc:"Vendor Q5 delivery delayed 3 weeks — Manufacturing impacted",priority:"High",status:"Open",due:"Jun 15"},
+        {id:"SCH-01",desc:"Vendor Q5 delivery delayed 3 weeks — Manufacturing impacted",priority:"High",status:"In Progress",due:"Jun 15"},
         {id:"SCH-02",desc:"Monsoon season risk — outdoor installation window at risk",priority:"High",status:"In Progress",due:"Jun 30"},
-        {id:"SCH-03",desc:"Regulatory inspection lead time extended to 6 weeks",priority:"High",status:"Open",due:"Jun 18"},
+        {id:"SCH-03",desc:"Regulatory inspection lead time extended to 6 weeks",priority:"High",status:"In Progress",due:"Jun 18"},
       ]},
       {id:5,name:"Risk & Opportunity",priority:"High",status:"In Progress",due:"Jun 12",owner:"K. Park",issues:[
-        {id:"RO-01",desc:"Extreme weather — outdoor work halt risk >5 days",priority:"High",status:"Open",due:"Jul 01"},
+        {id:"RO-01",desc:"Extreme weather — outdoor work halt risk >5 days",priority:"High",status:"In Progress",due:"Jul 01"},
         {id:"RO-02",desc:"Sub-vendor capacity constraint — 2nd shift unconfirmed",priority:"High",status:"In Progress",due:"Jun 20"},
-        {id:"RO-03",desc:"Early delivery incentive — $200K if before Aug 10",priority:"Medium",status:"Open",due:"Jun 30"},
+        {id:"RO-03",desc:"Early delivery incentive — $200K if before Aug 10",priority:"Medium",status:"In Progress",due:"Jun 30"},
       ]},
       {id:6,name:"Procurement",priority:"High",status:"In Progress",due:"Jun 22",owner:"M. Kim",issues:[
-        {id:"P-01",desc:"Valve package — vendor Q5 — ETA revised to Jul 5",priority:"High",status:"Open",due:"Jun 22"},
+        {id:"P-01",desc:"Valve package — vendor Q5 — ETA revised to Jul 5",priority:"High",status:"In Progress",due:"Jun 22"},
         {id:"P-02",desc:"Flange supply shortage — 2 alternative vendors evaluated",priority:"High",status:"In Progress",due:"Jun 20"},
-        {id:"P-03",desc:"Sub-vendor mobilization order not yet issued",priority:"Medium",status:"Open",due:"Jun 14"},
+        {id:"P-03",desc:"Sub-vendor mobilization order not yet issued",priority:"Medium",status:"In Progress",due:"Jun 14"},
       ]},
     ],
     summary:{
@@ -3501,7 +3505,7 @@ function getCurrent(){ return projData[activeId]; }
 // HELPERS
 // ═══════════════════════════════════════════
 function esc(s){ return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
-function statusColor(s){ return {Open:"#D97706","In Progress":"#C2000B",Closed:"#059669"}[s]||"#6b7280"; }
+function statusColor(s){ return {"In Progress":"#C2000B",Closed:"#059669"}[normalizeIssueStatus(s)]||"#6b7280"; }
 function riskStyle(r){ return {RED:{bg:BRAND,c:"#fff"},AMBER:{bg:"#D97706",c:"#fff"},GREEN:{bg:"#059669",c:"#fff"}}[r]||{bg:"#D97706",c:"#fff"}; }
 function priorityBadge(p){
   const m={High:"H",Medium:"M",Low:"L"};
@@ -3983,7 +3987,7 @@ function renderCats(){
         ${opts(["High","Medium","Low"],cat.priority||"Medium")}</select>`;
     const stSel   = `<select class="iss-sel st-${cat.status==="Closed"?"closed":"prog"}" onclick="event.stopPropagation()"
         onchange="getCurrent().cats[${realIdx}].status=this.value;syncRisk(getCurrent());renderCats();renderRight()">
-        ${opts(["In Progress","Closed"],cat.status==="Open"?"In Progress":cat.status)}</select>`;
+        ${opts(["In Progress","Closed"],normalizeIssueStatus(cat.status))}</select>`;
     const descCell = editMode
       ? `<input class="ei" style="width:100%;font-weight:600;" value="${esc(cat.name)}"
            onclick="event.stopPropagation()" oninput="getCurrent().cats[${realIdx}].name=this.value">`
@@ -4142,13 +4146,16 @@ function collapseAllVessels(){
     ((d && d.deliveryChecklist) || []).forEach(g=>{ g.collapsed = true; g.billingCollapsed = true; });
   });
 }
+function normalizeIssueStatus(status){
+  return String(status||"").trim().toLowerCase()==="closed" ? "Closed" : "In Progress";
+}
 function migrateIssueStatuses(){
-  // "Open" status removed — fold any existing Open issues into "In Progress"
+  // Keep legacy JSON compatible while exposing only In Progress / Closed.
   Object.keys(projData||{}).forEach(id=>{
     const d = projData[id];
     ((d && d.cats) || []).forEach(c=>{
-      if(c.status==="Open") c.status = "In Progress";
-      (c.issues||[]).forEach(it=>{ if(it.status==="Open") it.status = "In Progress"; });
+      c.status = normalizeIssueStatus(c.status);
+      (c.issues||[]).forEach(it=>{ it.status = normalizeIssueStatus(it.status); });
     });
   });
 }
@@ -4902,7 +4909,7 @@ function renderMailSummary(data){
 function computeOverallRisk(d){
   let high=0, med=0;
   (d.cats||[]).forEach(c=>{
-    if(["Open","In Progress"].includes(String(c.status||""))){
+    if(normalizeIssueStatus(c.status)==="In Progress"){
       const p=String(c.priority||""); if(p==="High")high++; else if(p==="Medium")med++;
     }
   });
@@ -5825,7 +5832,7 @@ function gatherIssueItems(){
         project: proj.name,
         shipyard: (d.meta&&d.meta.shipyard)||"",
         category: cat.name||"—",
-        catStatus: cat.status||"",
+        catStatus: normalizeIssueStatus(cat.status),
         openDate: (cat.openDate!=null?cat.openDate:(cat.due||"")),
         priority: cat.priority||"Medium",
         updates,
@@ -5839,7 +5846,7 @@ function gatherIssueItems(){
 }
 let tiFilter = "all";       // "all" | "High" | "Medium" | "Low" | ...
 let tiSort = { key:"priority", dir:1 };   // 테이블 Sort Status
-let tiStatusFilter = "all"; // "all" | "Open" | "In Progress" | "Closed"
+let tiStatusFilter = "all"; // "all" | "In Progress" | "Closed"
 let tiSelected = null;      // index into tiItemsCache for detail view
 let tiItemsCache = [];
 
@@ -5959,7 +5966,7 @@ function renderTotalIssues(){
     const priSel = `<select class="iss-sel pri-${(it.priority||"Medium").toLowerCase()}" onclick="event.stopPropagation()"
         onchange="tiChangePri('${it.projId}',${JSON.stringify(it.catId)},this.value)">${opts(["High","Medium","Low"],it.priority)}</select>`;
     const stSel = `<select class="iss-sel st-${it.catStatus==="Closed"?"closed":"prog"}" onclick="event.stopPropagation()"
-        onchange="tiChangeStatus('${it.projId}',${JSON.stringify(it.catId)},this.value)">${opts(["In Progress","Closed"],it.catStatus==="Open"?"In Progress":it.catStatus||"In Progress")}</select>`;
+        onchange="tiChangeStatus('${it.projId}',${JSON.stringify(it.catId)},this.value)">${opts(["In Progress","Closed"],normalizeIssueStatus(it.catStatus))}</select>`;
     return `<tr class="iss-row${it.catStatus==="Closed"?" closed":""}" onclick="tiGotoIssue('${it.projId}',${JSON.stringify(it.catId)})" title="Click to open this project's Issues tab and update it">
       <td><span class="sb-dot" style="width:9px;height:9px;background:${syc};display:inline-block;margin-right:6px;vertical-align:-1px;" title="${esc(it.shipyard)||"Not specified"}"></span><span style="font-weight:700;white-space:nowrap;">${esc(it.project)}</span></td>
       <td><span class="iss-desc">${esc(it.category)}</span>
@@ -6056,7 +6063,7 @@ function irGatherItems(){
         photo:hasPhoto?(cat.issuePhoto||""):(cat.photo||(last&&last.photo)||""),
         abbReply:cat.abbReply||"",category:cat.issueCategory||"",priority:cat.priority||"Medium",
         dateIssued:cat.dateIssued!=null?cat.dateIssued:(cat.openDate!=null?cat.openDate:(cat.due||"")),
-        dateClosed:cat.dateClosed||"",closedBy:cat.closedBy||"",status:cat.status||"Open",
+        dateClosed:cat.dateClosed||"",closedBy:cat.closedBy||"",status:normalizeIssueStatus(cat.status),
         latestAction:cat.latestAction!=null?cat.latestAction:((last&&last.desc)||""),
         updateCount:updates.length
       });
@@ -6080,7 +6087,6 @@ function irRenderSummary(){
   const scoped=irScopedItems(true), n=s=>scoped.filter(it=>it.status===s).length;
   el.innerHTML=`
     <div class="ir-stat"><div class="ir-stat-val">${scoped.length}</div><div class="ir-stat-lbl">Total Issues</div></div>
-    <div class="ir-stat" data-tone="open"><div class="ir-stat-val">${n("Open")}</div><div class="ir-stat-lbl">Open</div></div>
     <div class="ir-stat" data-tone="progress"><div class="ir-stat-val">${n("In Progress")}</div><div class="ir-stat-lbl">In Progress</div></div>
     <div class="ir-stat" data-tone="closed"><div class="ir-stat-val">${n("Closed")}</div><div class="ir-stat-lbl">Closed</div></div>`;
 }
@@ -6092,6 +6098,7 @@ function irSetSearch(v){ irSearch=v; irRenderSummary(); irRenderTable(); }
 function irUpdate(pidx,cidx,field,value){
   const proj=projects[pidx],d=proj&&projData[proj.id],cat=d&&d.cats&&d.cats[cidx];
   if(!cat) return;
+  if(field==="status") value=normalizeIssueStatus(value);
   if(field==="description"){
     cat.punchDescription=value;
     cat.name=value||"Untitled issue";
@@ -6152,6 +6159,7 @@ function irRenderTable(){
     if(!g){ g={projId:it.projId,project:it.project,shipyard:it.shipyard,items:[]}; groups.push(g); }
     g.items.push(it);
   });
+  groups.forEach(group=>group.items.sort((a,b)=>(a.status==="Closed"?1:0)-(b.status==="Closed"?1:0)));
   let rowNo=0;
   const body=groups.map(group=>{
     const dot=shipyardColor(group.shipyard);
@@ -6159,7 +6167,7 @@ function irRenderTable(){
     const hullLabel=hulls.length===1?`Hull ${esc(hulls[0])} · `:(hulls.length>1?`${hulls.length} hulls · `:"");
     const rows=group.items.map(it=>{
       rowNo++;
-      const stClass=it.status==="Closed"?"is-closed":(it.status==="In Progress"?"is-progress":"is-open");
+      const stClass=it.status==="Closed"?"is-closed":"is-progress";
       const priClass=`ir-priority-${String(it.priority||"Medium").toLowerCase()}`;
       return `<tr class="ir-row ${stClass}" data-ir-row="${it.pidx}-${it.cidx}">
         <td><div class="ir-readonly ir-num">${rowNo}</div></td>
@@ -6171,7 +6179,7 @@ function irRenderTable(){
         <td><select class="ir-cell-select ${priClass}" onchange="irUpdate(${it.pidx},${it.cidx},'priority',this.value)">${opts(["High","Medium","Low"],it.priority)}</select></td>
         <td><input class="ir-cell-input ir-date-input" value="${esc(it.dateIssued)}" placeholder="YYYY-MM-DD" oninput="irUpdate(${it.pidx},${it.cidx},'dateIssued',this.value)"></td>
         <td><input class="ir-cell-input" value="${esc(it.closedBy)}" placeholder="Name" oninput="irUpdate(${it.pidx},${it.cidx},'closedBy',this.value)"></td>
-        <td class="ir-status-cell"><select class="ir-cell-select ir-status-select" onchange="irUpdate(${it.pidx},${it.cidx},'status',this.value)">${opts(["Open","In Progress","Closed"],it.status)}</select></td>
+        <td class="ir-status-cell"><select class="ir-cell-select ir-status-select" onchange="irUpdate(${it.pidx},${it.cidx},'status',this.value)">${opts(["In Progress","Closed"],it.status)}</select></td>
         <td><textarea class="ir-cell-text" placeholder="Latest status and next action" oninput="irUpdate(${it.pidx},${it.cidx},'latestAction',this.value)">${esc(it.latestAction)}</textarea></td>
         <td><button class="ir-delete" type="button" title="Delete issue" onclick="irDeleteIssue(${it.pidx},${it.cidx})">×</button></td>
       </tr>`;
@@ -6192,7 +6200,7 @@ function irAddIssue(){
   const now=new Date(),date=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
   const id=Date.now()+Math.floor(Math.random()*1000);
   d.cats.push({id,name:"New issue",punchDescription:"",issueHull:(d.meta&&d.meta.hullNum)||"",equipment:"",issuePhoto:"",abbReply:"",issueCategory:"",
-    priority:"Medium",status:"Open",openDate:date,dateIssued:date,dateClosed:"",closedBy:"",latestAction:"",owner:"",issues:[]});
+    priority:"Medium",status:"In Progress",openDate:date,dateIssued:date,dateClosed:"",closedBy:"",latestAction:"",owner:"",issues:[]});
   irProjectFilter=targetId; irEquipmentFilter=""; syncRisk(d); renderTotalIssues();
   setTimeout(()=>{
     const row=document.querySelector(`[data-ir-row="${pidx}-${d.cats.length-1}"]`),field=row&&row.querySelector("textarea");
@@ -6209,6 +6217,7 @@ function irDeleteIssue(pidx,cidx){
 function renderTotalIssues(){
   const wrap=document.getElementById("ti-content"); if(!wrap) return;
   if(irProjectFilter&&!projects.some(p=>p.id===irProjectFilter)) irProjectFilter="";
+  if(!["all","In Progress","Closed"].includes(irStatusFilter)) irStatusFilter="all";
   const projectOpts=`<option value="">All Projects</option>`+projects.map(p=>
     `<option value="${esc(p.id)}"${irProjectFilter===p.id?" selected":""}>${esc(p.name)}</option>`).join("");
   const equipmentValues=[...new Set(irGatherItems()
@@ -6218,7 +6227,7 @@ function renderTotalIssues(){
   if(irEquipmentFilter&&!equipmentValues.includes(irEquipmentFilter)) irEquipmentFilter="";
   const equipmentOpts=`<option value="">All Equipment</option>`+equipmentValues.map(v=>
     `<option value="${esc(v)}"${irEquipmentFilter===v?" selected":""}>${esc(v)}</option>`).join("");
-  const statusOpts=["all","Open","In Progress","Closed"].map(v=>
+  const statusOpts=["all","In Progress","Closed"].map(v=>
     `<option value="${v}"${irStatusFilter===v?" selected":""}>${v==="all"?"All Status":v}</option>`).join("");
   wrap.innerHTML=`<div class="ir-toolbar">
     <label class="ir-field"><span>Project</span><select class="ir-control" onchange="irSetProject(this.value)">${projectOpts}</select></label>
