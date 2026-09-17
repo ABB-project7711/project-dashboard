@@ -1994,6 +1994,7 @@ table.npr-tbl td.dim{color:#d1d5db;}
   <div class="conn-actions">
     <button class="btn btn-sm" id="connect-inline" onclick="connectFolder()" title="Connect the 'Doc for management' folder to load shared data" style="background:#0e7490;">🗄️ Load Shared Data</button>
     <button class="btn btn-white btn-sm" id="top-save-btn" style="display:none;margin-left:8px;" onclick="doSave()">💾 Save &amp; Share</button>
+    <button class="btn btn-sm" id="team-storage-btn" style="display:none;margin-left:8px;background:#b45309;" onclick="migrateToSplit()" title="Reduce OneDrive conflicts by saving one file per project">🛡 Team-safe Storage</button>
     <label id="autosave-label" style="display:none;align-items:center;gap:5px;font-size:12px;font-weight:600;color:#374151;margin-left:10px;cursor:pointer;">
       <input type="checkbox" id="autosave-toggle" onchange="toggleAutoSave(this.checked)"> ⚡ Auto-save
       <select id="autosave-interval" onchange="setAutoSaveInterval(this.value)" onclick="event.stopPropagation()"
@@ -2602,12 +2603,51 @@ let baseSnapshot = null; // common ancestor (state as loaded/last-synced) for 3-
 let pollBusy = false;    // guard so polling and saving don't overlap
 const FS_SUPPORTED = "showOpenFilePicker" in window;
 
+/* Save coordinator: serialize all writes from auto-save, manual save, page-hide,
+   and multiple dashboard tabs. This prevents overlapping createWritable() calls. */
+let saveQueue = Promise.resolve(true);
+let silentSavePending = null;
+let saveCounter = 0;
+let saveClientId = "client-"+Math.random().toString(36).slice(2,10);
+try{
+  saveClientId = sessionStorage.getItem("dashboardSaveClientId") || (crypto.randomUUID ? crypto.randomUUID() : saveClientId);
+  sessionStorage.setItem("dashboardSaveClientId", saveClientId);
+}catch(e){}
+function nextSaveStamp(){ return `${Date.now()}-${saveClientId}-${++saveCounter}`; }
+function waitMs(ms){ return new Promise(resolve=>setTimeout(resolve,ms)); }
+async function waitForStorageIdle(){
+  for(let i=0;i<50 && pollBusy;i++) await waitMs(100);
+  return !pollBusy;
+}
+async function withDashboardSaveLock(task){
+  if(navigator.locks && navigator.locks.request){
+    return await navigator.locks.request("project-dashboard-storage", {mode:"exclusive"}, task);
+  }
+  return await task();
+}
+async function writeJsonVerified(handle, payload, stamp){
+  let writable = null;
+  try{
+    writable = await handle.createWritable();
+    await writable.write(JSON.stringify(payload, null, 2));
+    await writable.close();
+    writable = null;
+    const verifyFile = await handle.getFile();
+    const verifyText = await verifyFile.text();
+    const verified = verifyText.trim() ? JSON.parse(verifyText) : null;
+    return { ok:!!(verified && verified._stamp===stamp), data:verified, file:verifyFile };
+  }catch(error){
+    if(writable){ try{ await writable.abort(); }catch(e){} }
+    return { ok:false, error };
+  }
+}
+
 /* ── 3-way merge helpers (optimistic concurrency) ── */
 function deepClone(o){ return o==null ? o : JSON.parse(JSON.stringify(o)); }
 function _eqJSON(a,b){ return JSON.stringify(a)===JSON.stringify(b); }
 function _isPlainObj(x){ return x && typeof x==="object" && !Array.isArray(x); }
 function snapshotState(){ return deepClone({ projects, projData, mailSummary, spareParts, customEvents, deliveryCosts, nprData, prrSlides }); }
-function hasLocalChanges(){ return baseSnapshot && !_eqJSON(snapshotState(), baseSnapshot); }
+function hasLocalChanges(){ return !baseSnapshot || !_eqJSON(snapshotState(), baseSnapshot); }
 
 // merge3: base = common ancestor, mine = my current, theirs = latest on disk.
 // Returns merged value; pushes dotted paths of true same-field conflicts into `conflicts`.
@@ -2768,24 +2808,27 @@ function setConnUI(state, name){
   const status = document.getElementById("file-conn-status");
   const refreshBtn = document.getElementById("refresh-btn");
   const topSaveBtn = document.getElementById("top-save-btn");
+  const teamStorageBtn = document.getElementById("team-storage-btn");
   const autosaveLabel = document.getElementById("autosave-label");
   const connectInline = document.getElementById("connect-inline");
   if(connectInline) connectInline.style.display = (state==="connected") ? "none" : "inline-block";
   if(state==="connected"){
     icon.textContent = "🟢";
-    status.textContent = "Connected: " + name;
+    status.textContent = "Connected: " + name + ((dirHandle && !splitMode) ? " · Single-file mode" : "");
     refreshBtn.style.display = "block";
     const cb = document.getElementById("cleanup-btn");
     if(cb) cb.style.display = dirHandle ? "block" : "none";
     const sb2 = document.getElementById("split-btn");
     if(sb2) sb2.style.display = (dirHandle && !splitMode) ? "block" : "none";
     if(topSaveBtn) topSaveBtn.style.display = "inline-block";
+    if(teamStorageBtn) teamStorageBtn.style.display = (dirHandle && !splitMode) ? "inline-block" : "none";
     if(autosaveLabel) autosaveLabel.style.display = "inline-flex";
   } else if(state==="need-reconnect"){
     icon.textContent = "🟡";
     status.textContent = name + " — permission must be renewed. Select 'Load Shared Data' again.";
     refreshBtn.style.display = "none";
     if(topSaveBtn) topSaveBtn.style.display = "none";
+    if(teamStorageBtn) teamStorageBtn.style.display = "none";
     if(autosaveLabel) autosaveLabel.style.display = "none";
   } else {
     icon.textContent = "⚪";
@@ -2794,6 +2837,7 @@ function setConnUI(state, name){
       : "This browser is not supported. Please open this in the latest version of Edge.";
     refreshBtn.style.display = "none";
     if(topSaveBtn) topSaveBtn.style.display = "none";
+    if(teamStorageBtn) teamStorageBtn.style.display = "none";
     if(autosaveLabel) autosaveLabel.style.display = "none";
   }
 }
@@ -2805,6 +2849,9 @@ async function connectExisting(){
       types:[{description:"Dashboard data file", accept:{"application/json":[".json"]}}]
     });
     dirHandle = null;                        // switching to single-file mode
+    splitMode = false;
+    missingSplitProjectIds = [];
+    try{ await idbSet("splitMode", 0); }catch(e){}
     try{ await idbSet("dataDirHandle", null); }catch(e){}
     fileHandle = h;
     canonicalName = h.name || "dashboard-data.json";
@@ -2835,6 +2882,14 @@ function showFolderHint(){
   clearTimeout(el._t);
   el._t = setTimeout(()=>{ el.classList.remove("show"); }, 5000);
 }
+async function offerTeamSafeStorage(){
+  if(!dirHandle || splitMode || projects.length<2) return;
+  const useSplit = confirm("Team-safe storage is recommended for this shared folder.\n\n"
+    + "It saves each project separately, greatly reducing OneDrive conflict copies and failed saves.\n"
+    + "The current dashboard-data.json will remain as a backup.\n\n"
+    + "Switch this shared folder to Team-safe Storage now?");
+  if(useSplit) await migrateToSplit();
+}
 async function connectFolder(){
   if(!FS_SUPPORTED || !window.showDirectoryPicker){ alert("This feature works only in a current version of Edge or Chrome."); return; }
   showFolderHint();
@@ -2852,6 +2907,9 @@ async function connectFolder(){
       return;
     }
     // pick canonical file: prefer existing dashboard-data.json, else newest dashboard-data*.json, else create
+    splitMode = false;
+    missingSplitProjectIds = [];
+    try{ await idbSet("splitMode", 0); }catch(e){}
     let chosen = null, newest = null, newestTime = -1;
     for await (const [nm, handle] of dh.entries()){
       if(handle.kind!=="file") continue;
@@ -2867,6 +2925,7 @@ async function connectFolder(){
     await loadFromFile();
     const res = await reconcileConflicts(false);
     if(res && res.cleaned>0) setAutoSaveStatus("🧹 Conflict copies: "+res.cleaned+" merged and cleaned");
+    await offerTeamSafeStorage();
   }catch(e){ /* user cancelled */ }
 }
 // Merge every dashboard-data-*.json conflict copy into memory, then delete the copies.
@@ -2919,7 +2978,6 @@ async function reconcileConflicts(manual){
     let writeOk = true;
     if(merged){
       if(activeId && !projData[activeId]) activeId = (projects[0]&&projects[0].id)||null;
-      baseSnapshot = snapshotState();
       pollBusy = false;                 // allow writeToFile to run
       try{ writeOk = await writeToFile({force:true}); }catch(e){ writeOk = false; }
       pollBusy = true;
@@ -2948,6 +3006,10 @@ async function createNew(){
       suggestedName:"dashboard-data.json",
       types:[{description:"Dashboard data file", accept:{"application/json":[".json"]}}]
     });
+    dirHandle = null;
+    splitMode = false;
+    missingSplitProjectIds = [];
+    try{ await idbSet("splitMode", 0); await idbSet("dataDirHandle", null); }catch(e){}
     fileHandle = h;
     try{ await idbSet("dataFileHandle", h); }catch(e){ /* auto-reconnect convenience only, not critical */ }
     const pid = "proj_"+Date.now();
@@ -3021,6 +3083,7 @@ const SPLIT_INDEX = "dashboard-index.json";
 let splitMode   = false;      // 분할 저장 사용 중인지
 let projStamps  = {};         // pid → 마지막으로 읽거나 쓴 _stamp
 let projMtime   = {};         // pid → 파일 lastModified (변경 감지용, 불필요한 파싱 회피)
+let missingSplitProjectIds = []; // OneDrive sync may temporarily delay project files
 
 function projFileName(pid){
   return "proj-" + String(pid).replace(/[^A-Za-z0-9_\-]/g, "_") + ".json";
@@ -3051,7 +3114,8 @@ async function loadSplit(){
     : { inStock: [], notStock: [] };
   lastStamp = (idx && idx._stamp) || idxF.lastModified;
 
-  projData = {}; projStamps = {}; projMtime = {};
+  const previousProjData = projData || {};
+  projData = {}; projStamps = {}; projMtime = {}; missingSplitProjectIds = [];
   for(const p of projects){
     try{
       const h = await dirHandle.getFileHandle(projFileName(p.id));
@@ -3061,7 +3125,12 @@ async function loadSplit(){
       projStamps[p.id] = o._stamp || f.lastModified;
       projMtime[p.id]  = f.lastModified;
     }catch(e){
-      projData[p.id] = projData[p.id] || sampleProject();   // 파일이 없으면 빈 프로젝트로
+      // Never replace a temporarily unavailable team file with sample data.
+      projData[p.id] = previousProjData[p.id] || {
+        meta:defaultMeta(p.name||"Project"), stages:defaultStages(), cats:[],
+        summary:defaultSummary(), deliveryChecklist:[]
+      };
+      missingSplitProjectIds.push(p.id);
     }
   }
   if(!projects.length){
@@ -3075,6 +3144,7 @@ async function loadSplit(){
   baseSnapshot = snapshotState();
   splitMode = true;
   setConnUI("connected", "Split storage · "+projects.length+" projects");
+  if(missingSplitProjectIds.length) setAutoSaveStatus("Waiting for "+missingSplitProjectIds.length+" project files to sync");
   /* 폴더를 열 때도 브리핑 충돌 사본을 정리합니다 (저장을 기다릴 필요 없이) */
   try{ const c = await cleanBriefConflicts(); if(c) briefWarn("🧹 Briefing conflict copies: "+c+" items cleaned"); }catch(e){}
   render();
@@ -3084,9 +3154,14 @@ async function loadSplit(){
 async function writeSplit(opts){
   const silent = opts && opts.silent, force = opts && opts.force;
   if(!dirHandle) return false;
+  if(missingSplitProjectIds.length){
+    if(!silent) alert("Some project files are still syncing from OneDrive.\n\nNo shared files were overwritten. Keep this window open and try again shortly.");
+    return false;
+  }
   if(!force && baseSnapshot && !hasLocalChanges() && silent) return true;
   pollBusy = true;
-  let wrote = 0, conflictCount = 0; const skipped = [];
+  let wrote = 0, conflictCount = 0, indexSaved = false;
+  const skipped = [], savedProjectIds = [];
   try{
     /* 1) 프로젝트별 — 내 메모리가 baseSnapshot과 다른 것만 */
     for(const p of projects){
@@ -3097,46 +3172,88 @@ async function writeSplit(opts){
       const h = await dirHandle.getFileHandle(projFileName(pid), { create:true });
       /* 디스크에 팀원 변경이 있으면 3-way 병합 후 저장.
          병합이 실패하면 절대 덮어쓰지 않는다 (팀원 데이터 유실 방지) */
-      let mergeFailed = false;
+      let mergeFailed = false, diskObj = null;
       try{
         const f = await h.getFile();
         const t = await f.text();
         if(t.trim()){
-          const o = JSON.parse(t);
-          if(o._stamp && projStamps[pid] && o._stamp !== projStamps[pid]){
+          diskObj = JSON.parse(t);
+          if(diskObj._stamp && projStamps[pid] && diskObj._stamp !== projStamps[pid]){
             try{
               const cf = [];
-              projData[pid] = merge3(base===undefined?mine:base, mine, o.data||{}, "", cf);
+              projData[pid] = merge3(base===undefined?mine:base, mine, diskObj.data||{}, "", cf);
               conflictCount += cf.length;
             }catch(me){ mergeFailed = true; }
           }
         }
-      }catch(e){ /* 파일이 없거나 읽기 실패 → 새로 쓰기 */ }
+      }catch(e){
+        // Never overwrite a shared file that could not be read or parsed.
+        mergeFailed = true;
+      }
       if(mergeFailed){
         skipped.push((p.name||pid));
         continue;                       // 이 프로젝트는 저장하지 않음 → 다음 폴링에서 다시 시도
       }
-      const stamp = Date.now();
-      const w = await h.createWritable();
-      await w.write(JSON.stringify({ _stamp:stamp, id:pid, data:projData[pid] }, null, 2));
-      await w.close();
+      const stamp = nextSaveStamp();
+      const result = await writeJsonVerified(h, {
+        _stamp:stamp, _savedAt:new Date().toISOString(), _writer:saveClientId,
+        id:pid, data:projData[pid]
+      }, stamp);
+      if(!result.ok){
+        // Another client may have written immediately after us. Merge it on retry.
+        if(result.data && result.data.data){
+          try{
+            const cf=[];
+            projData[pid]=merge3(base===undefined?mine:base, projData[pid], result.data.data, "", cf);
+            conflictCount += cf.length;
+            projStamps[pid]=result.data._stamp||projStamps[pid];
+          }catch(e){}
+        }
+        skipped.push((p.name||pid));
+        continue;
+      }
       projStamps[pid] = stamp;
-      try{ projMtime[pid] = (await h.getFile()).lastModified; }catch(e){}
-      wrote++;
+      projMtime[pid] = result.file.lastModified;
+      savedProjectIds.push(pid); wrote++;
     }
     /* 2) 인덱스 — 공통 데이터가 바뀐 경우만 */
-    const baseIdx = baseSnapshot ? {
+    let baseIdx = baseSnapshot ? {
       projects: baseSnapshot.projects, mailSummary: baseSnapshot.mailSummary,
       spareParts: baseSnapshot.spareParts, customEvents: baseSnapshot.customEvents,
       deliveryCosts: baseSnapshot.deliveryCosts, nprData: baseSnapshot.nprData, prrSlides: baseSnapshot.prrSlides
     } : null;
     if(force || !baseIdx || !_eqj(indexPayload(), baseIdx)){
       const ih = await dirHandle.getFileHandle(SPLIT_INDEX, { create:true });
-      const stamp = Date.now();
-      const w = await ih.createWritable();
-      await w.write(JSON.stringify(Object.assign({_stamp:stamp}, indexPayload()), null, 2));
-      await w.close();
-      lastStamp = stamp; wrote++;
+      let indexReadable = true;
+      try{
+        const currentFile = await ih.getFile();
+        const currentText = await currentFile.text();
+        if(currentText.trim()){
+          const currentIndex = JSON.parse(currentText);
+          if(currentIndex._stamp && lastStamp && currentIndex._stamp!==lastStamp){
+            const cf=[];
+            const mergedIdx=merge3(baseIdx||indexPayload(), indexPayload(), {
+              projects:currentIndex.projects||[], mailSummary:currentIndex.mailSummary||[],
+              spareParts:currentIndex.spareParts||{inStock:[],notStock:[]}, customEvents:currentIndex.customEvents||[],
+              deliveryCosts:currentIndex.deliveryCosts||[], nprData:currentIndex.nprData||nprData,
+              prrSlides:currentIndex.prrSlides||[]
+            }, "", cf);
+            projects=mergedIdx.projects||projects; mailSummary=mergedIdx.mailSummary||[];
+            spareParts=mergedIdx.spareParts||spareParts; customEvents=mergedIdx.customEvents||[];
+            deliveryCosts=mergedIdx.deliveryCosts||[]; nprData=mergedIdx.nprData||nprData;
+            prrSlides=mergedIdx.prrSlides||[]; conflictCount+=cf.length;
+          }
+        }
+      }catch(e){ indexReadable = false; }
+      if(!indexReadable){ skipped.push("Shared index"); }
+      else{
+        const stamp = nextSaveStamp();
+        const result = await writeJsonVerified(ih, Object.assign({
+          _stamp:stamp, _savedAt:new Date().toISOString(), _writer:saveClientId
+        }, indexPayload()), stamp);
+        if(result.ok){ lastStamp = stamp; indexSaved = true; wrote++; }
+        else skipped.push("Shared index");
+      }
     }
     /* 3) 삭제된 프로젝트의 파일 정리 */
     if(baseSnapshot && baseSnapshot.projects){
@@ -3147,7 +3264,20 @@ async function writeSplit(opts){
         }
       }
     }
-    baseSnapshot = snapshotState();
+    // Advance the common ancestor only for data that was actually verified on disk.
+    const nextBase = baseSnapshot ? deepClone(baseSnapshot) : {
+      projects:[], projData:{}, mailSummary:[], spareParts:{inStock:[],notStock:[]},
+      customEvents:[], deliveryCosts:[], nprData:{rows:[],cols:[],pc:"",at:"",file:""}, prrSlides:[]
+    };
+    if(!nextBase.projData) nextBase.projData={};
+    savedProjectIds.forEach(pid=>{ nextBase.projData[pid]=deepClone(projData[pid]); });
+    if(indexSaved){
+      const idx=deepClone(indexPayload());
+      nextBase.projects=idx.projects; nextBase.mailSummary=idx.mailSummary;
+      nextBase.spareParts=idx.spareParts; nextBase.customEvents=idx.customEvents;
+      nextBase.deliveryCosts=idx.deliveryCosts; nextBase.nprData=idx.nprData; nextBase.prrSlides=idx.prrSlides;
+    }
+    baseSnapshot = nextBase;
     if(!silent && conflictCount) alert("Team changes were merged. For "+conflictCount+" simultaneous edits, my values were kept.");
     if(skipped.length){
       setAutoSaveStatus("⚠ Merge deferred: "+skipped.length+" items");
@@ -3155,11 +3285,12 @@ async function writeSplit(opts){
         + skipped.join(", ") + "\n\nReload the latest shared data, then edit again. This safeguard prevents overwriting team changes.");
     }
   }catch(e){
-    pollBusy = false;
     if(!silent) alert("Save error: "+(e&&e.message||e));
     return false;
+  }finally{
+    pollBusy = false;
   }
-  pollBusy = false;
+  if(skipped.length) return false;
   await writeBriefSource();
   renderMailSummary();
   return true;
@@ -3299,6 +3430,7 @@ async function writeBriefSource(){
 async function pollSplit(){
   if(!dirHandle) return;
   let changed = false;
+  if(!baseSnapshot) baseSnapshot=snapshotState();
   try{
     const ih = await dirHandle.getFileHandle(SPLIT_INDEX, { create:true });
     const f  = await ih.getFile();
@@ -3314,6 +3446,15 @@ async function pollSplit(){
       }, "", cf);
       projects=m.projects||projects; mailSummary=m.mailSummary||[]; spareParts=m.spareParts||spareParts;
       customEvents=m.customEvents||[]; deliveryCosts=m.deliveryCosts||[]; nprData=m.nprData||nprData; prrSlides=m.prrSlides||[];
+      // The disk version becomes the new merge ancestor; local unsaved edits remain
+      // different from this base and will still be auto-saved.
+      baseSnapshot.projects=deepClone(o.projects||[]);
+      baseSnapshot.mailSummary=deepClone(o.mailSummary||[]);
+      baseSnapshot.spareParts=deepClone(o.spareParts||{inStock:[],notStock:[]});
+      baseSnapshot.customEvents=deepClone(o.customEvents||[]);
+      baseSnapshot.deliveryCosts=deepClone(o.deliveryCosts||[]);
+      baseSnapshot.nprData=deepClone(o.nprData||nprData);
+      baseSnapshot.prrSlides=deepClone(o.prrSlides||[]);
       lastStamp=o._stamp; changed=true;
     }
   }catch(e){}
@@ -3323,22 +3464,34 @@ async function pollSplit(){
       const h = await dirHandle.getFileHandle(projFileName(pid));
       const f = await h.getFile();
       if(projMtime[pid] === f.lastModified) continue;      // 파일이 안 바뀌었으면 파싱 생략
-      projMtime[pid] = f.lastModified;
       const o = JSON.parse(await f.text());
-      if(o._stamp && projStamps[pid] && o._stamp !== projStamps[pid]){
+      if(!projStamps[pid]){
+        projData[pid]=deepClone(o.data||{});
+        if(!baseSnapshot.projData) baseSnapshot.projData={};
+        baseSnapshot.projData[pid]=deepClone(o.data||{});
+        projStamps[pid]=o._stamp||f.lastModified;
+        missingSplitProjectIds=missingSplitProjectIds.filter(id=>id!==pid);
+        changed=true;
+      }else if(o._stamp && o._stamp !== projStamps[pid]){
         const base = (baseSnapshot.projData||{})[pid];
         const cf=[];
         projData[pid] = merge3(base===undefined?(o.data||{}):base, projData[pid]||{}, o.data||{}, "", cf);
+        if(!baseSnapshot.projData) baseSnapshot.projData={};
+        baseSnapshot.projData[pid]=deepClone(o.data||{});
         projStamps[pid] = o._stamp; changed=true;
       }
+      projMtime[pid] = f.lastModified;
     }catch(e){}
   }
   if(changed){
     if(activeId && !projData[activeId]) activeId = (projects[0]&&projects[0].id)||null;
-    baseSnapshot = snapshotState();
     render();
-    setAutoSaveStatus("🔄 Team changes applied");
-    setTimeout(()=>setAutoSaveStatus(""), 4000);
+    if(missingSplitProjectIds.length){
+      setAutoSaveStatus("Waiting for "+missingSplitProjectIds.length+" project files to sync");
+    }else{
+      setAutoSaveStatus("🔄 Team changes applied");
+      setTimeout(()=>setAutoSaveStatus(""), 4000);
+    }
   }
 }
 
@@ -3353,7 +3506,7 @@ async function migrateToSplit(){
   try{
     splitMode = true;
     baseSnapshot = null;                 // 전부 새로 쓰도록
-    const ok = await writeSplit({force:true});
+    const ok = await writeToFile({force:true});
     if(!ok){ splitMode=false; return; }
     projStamps = {}; projMtime = {};
     for(const p of projects){
@@ -3395,7 +3548,7 @@ async function reconcileSplitCopies(manual){
     }catch(e){}
   }
   if(names.length){
-    const ok = await writeSplit({force:true});      // 병합 결과를 먼저 디스크에 확정
+    const ok = await writeToFile({force:true});      // 병합 결과를 먼저 디스크에 확정
     if(ok){                                          // 저장 성공한 경우에만 사본 삭제
       for(const nm of names){ try{ await dirHandle.removeEntry(nm); cleaned++; }catch(e){} }
     }
@@ -3405,7 +3558,24 @@ async function reconcileSplitCopies(manual){
   return {cleaned};
 }
 
-async function writeToFile(opts){
+function writeToFile(opts){
+  opts = opts || {};
+  if(opts.silent && silentSavePending) return silentSavePending;
+  const run = async()=>{
+    const idle = await waitForStorageIdle();
+    if(!idle) return false;
+    return await withDashboardSaveLock(()=>writeToFileCore(opts));
+  };
+  const queued = saveQueue.then(run,run).catch(()=>false);
+  saveQueue = queued.then(()=>true,()=>true);
+  if(opts.silent){
+    silentSavePending = queued;
+    queued.finally(()=>{ if(silentSavePending===queued) silentSavePending=null; });
+  }
+  return queued;
+}
+
+async function writeToFileCore(opts){
   if(splitMode) return await writeSplit(opts);
   const silent = opts && opts.silent;
   const force  = opts && opts.force;
@@ -3441,15 +3611,33 @@ async function writeToFile(opts){
       // no teammate edit conflict, but keep Power-Automate-written mail summary
       mailSummary = onDisk.mailSummary;
     }
-  }catch(e){ /* proceed with save even if comparison fails */ }
+  }catch(e){
+    // A transient read or JSON parse failure must never be followed by an overwrite.
+    pollBusy = false;
+    if(!silent) alert("The shared file could not be checked, so it was not overwritten.\n\nPlease wait for OneDrive to finish syncing and try Save & Share again.");
+    return false;
+  }
 
-  const stamp = Date.now();
-  const writable = await fileHandle.createWritable();
-  await writable.write(JSON.stringify({_stamp:stamp, projects, projData, mailSummary, spareParts, customEvents, deliveryCosts, nprData, prrSlides}, null, 2));
-  await writable.close();
-  lastStamp = stamp;
-  baseSnapshot = snapshotState();   // disk now matches memory → new common ancestor
-  pollBusy = false;
+  try{
+    const stamp = nextSaveStamp();
+    const result = await writeJsonVerified(fileHandle, {
+      _stamp:stamp, _savedAt:new Date().toISOString(), _writer:saveClientId,
+      projects, projData, mailSummary, spareParts, customEvents, deliveryCosts, nprData, prrSlides
+    }, stamp);
+    if(!result.ok){
+      // If a teammate won the race immediately after our write, merge their version
+      // and keep the local edits dirty so the queued retry can safely persist them.
+      if(result.data && result.data.projects){
+        try{ mergeDiskIntoMemory(result.data); render(); }catch(e){}
+      }
+      if(!silent) alert("Save could not be verified. Your changes are still open in this browser and will be retried.\n\nPlease keep this window open and try Save & Share again shortly.");
+      return false;
+    }
+    lastStamp = stamp;
+    baseSnapshot = snapshotState();   // verified disk state = new common ancestor
+  }finally{
+    pollBusy = false;
+  }
   await writeBriefSource();
   renderMailSummary();
   return true;
@@ -5269,11 +5457,15 @@ function toggleEdit(){
 }
 
 async function doSave(){
+  setAutoSaveStatus("saving");
   const ok = await writeToFile({force:true});
   if(ok){
+    setAutoSaveStatus("saved");
     const toast = document.getElementById("save-toast");
     toast.classList.add("show");
     setTimeout(()=>toast.classList.remove("show"), 2500);
+  }else{
+    setAutoSaveStatus("retry");
   }
 }
 
@@ -11105,8 +11297,10 @@ function setAutoSaveStatus(state){
     const hh = String(t.getHours()).padStart(2,"0"), mm = String(t.getMinutes()).padStart(2,"0");
     el.textContent = `Saved ${hh}:${mm}`; el.style.color = "#059669";
   }
-  else if(state==="conflict"){ el.textContent = "Conflict — reload before saving"; el.style.color = "#C2000B"; }
+  else if(state==="unsaved"){ el.textContent = "Unsaved changes"; el.style.color = "#d97706"; }
+  else if(state==="retry" || state==="conflict"){ el.textContent = "Save pending — retrying"; el.style.color = "#C2000B"; }
   else if(state==="off"){ el.textContent = ""; }
+  else if(state){ el.textContent = state; el.style.color = "#667085"; }
   else { el.textContent = ""; }
 }
 
@@ -11120,6 +11314,7 @@ let asDebounceMs = 90000;                     // 자동저장 대기시간 (기�
 function scheduleAutoSave(){
   if(!autoSaveEnabled || !fileHandle) return;
   lastUserActivity = Date.now();
+  setAutoSaveStatus("unsaved");
   clearTimeout(autoSaveTimer);
   autoSaveTimer = setTimeout(runAutoSave, asDebounceMs);
 }
@@ -11136,7 +11331,11 @@ async function runAutoSave(){
   setAutoSaveStatus("saving");
   let ok = false;
   try{ ok = await writeToFile({silent:true}); }catch(e){ ok = false; }
-  setAutoSaveStatus(ok ? "saved" : "conflict");
+  setAutoSaveStatus(ok ? "saved" : "retry");
+  if(!ok && hasLocalChanges()){
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = setTimeout(runAutoSave, 15000);
+  }
 }
 
 async function setAutoSaveInterval(v){
@@ -11163,10 +11362,20 @@ setInterval(()=>{ pollExternalChanges(); }, 12000); // pull teammates' changes i
 document.addEventListener("visibilitychange", ()=>{
   if(document.hidden && autoSaveEnabled && fileHandle && hasLocalChanges()){
     clearTimeout(autoSaveTimer);
-    try{ writeToFile({silent:true}).then(ok=>setAutoSaveStatus(ok?"saved":"conflict")); }catch(e){}
+    try{ writeToFile({silent:true}).then(ok=>{
+      setAutoSaveStatus(ok?"saved":"retry");
+      if(!ok && hasLocalChanges()) autoSaveTimer=setTimeout(runAutoSave,15000);
+    }); }catch(e){}
   }
 });
-window.addEventListener("beforeunload", ()=>{ if(autoSaveEnabled && fileHandle && hasLocalChanges()){ try{ writeToFile({silent:true}); }catch(e){} } });
+window.addEventListener("beforeunload", e=>{
+  // Browsers do not guarantee asynchronous file writes during unload. Warn instead
+  // of starting an unreliable last-second write that can leave a conflict copy.
+  if(fileHandle && hasLocalChanges()){
+    e.preventDefault();
+    e.returnValue = "";
+  }
+});
 
 (async ()=>{
   try{
